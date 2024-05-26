@@ -31,7 +31,7 @@ Flags:
 
 ```console
 Usage:
-   vils validate [flags]
+   vilks validate [flags]
 
 Flags:
   -h, --help              help for validate
