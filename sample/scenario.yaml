@@ -1,0 +1,16 @@
+teams:
+  - name: Team 1
+    index: 26
+
+  - name: Team 2
+    index: 26
+
+hosts:
+  - name: Web site
+    host: 172.{x}.64.98
+    attacks:
+      - name: RCE
+        recipe: drupal
+        params:
+          - name: target_admin_password
+            value: admin

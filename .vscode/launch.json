@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "cmd/runner/",
+            "args": [
+                "exec",
+                "--debug",
+                "-r", "sample/recipes/",
+                "-e", "sample/evidence/",
+                "-s", "sample/scenario.yaml",
+            ],
+            "cwd": "${workspaceFolder}",
+        }
+    ]
+}

