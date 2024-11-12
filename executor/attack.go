@@ -237,16 +237,18 @@ func (a *Attack) Execute(ctx context.Context) error {
 		params[k] = v
 	}
 
-	// Add evidence parameters.
-	for k, v := range a.Evidence {
-		// TODO: Add _FILE suffix for file evidence.
-		params["EVIDENCE_"+strings.ToUpper(k)] = v
-	}
-
 	for _, step := range a.Recipe.Steps {
 		a.executor.log.Debug("Executing step " + a.executor.log.Special(step.Name))
 
-		if err := a.executeStep(ctx, r, step, params); err != nil {
+		prms := maps.Clone(params)
+
+		// Add evidence parameters.
+		for k, v := range a.Evidence {
+			// TODO: Add _file suffix for file evidence.
+			prms["evidence_"+k] = v
+		}
+
+		if err := a.executeStep(ctx, r, step, prms); err != nil {
 			return err
 		}
 	}

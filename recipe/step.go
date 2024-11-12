@@ -50,6 +50,11 @@ func (s *Step) Environ(params map[string]string) []string {
 					val = params[v]
 				}
 			}
+			if prm, ok := v["from_evidence"]; ok {
+				if v, ok := prm.(string); ok {
+					val = params["evidence_"+v]
+				}
+			}
 		}
 
 		env = append(env, fmt.Sprintf("%s=%s", k, val))

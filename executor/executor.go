@@ -40,9 +40,10 @@ func (e *Executor) AddAttack(host, recipe string, params map[string]string) erro
 	e.attacks = append(e.attacks, &Attack{
 		executor: e,
 
-		Host:   host,
-		Recipe: r,
-		Params: params,
+		Host:     host,
+		Recipe:   r,
+		Params:   params,
+		Evidence: make(map[string]string),
 	})
 
 	return nil

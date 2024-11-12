@@ -28,9 +28,12 @@ steps:
     evidence:
       - name: command_output
         type: output
-        regexp: uid=\d+\(\w+\) gid=\d+\(\w+\) groups=(?:,?\d+\(\w+\))+
+        regexp: uid=\d+\([-a-z0-9_]+\) gid=\d+\([-a-z0-9_]+\) groups=(?:,?\d+\([-a-z0-9_]+\))+
 
   - name: Report
     image: bash
+    environment:
+      COMMAND_OUTPUT:
+        from_evidence: command_output
     commands:
-      - 'echo "Exploit command response: $${EVIDENCE_COMMAND_OUTPUT}"'
+      - 'echo "Exploit command response: $${COMMAND_OUTPUT}"'
