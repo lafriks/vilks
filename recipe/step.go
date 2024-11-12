@@ -8,11 +8,26 @@ import (
 	"strconv"
 )
 
+type EvidenceType string
+
+const (
+	EvidenceTypeFile   EvidenceType = "file"
+	EvidenceTypeOutput EvidenceType = "output"
+)
+
+type Evidence struct {
+	Name   string       `json:"name"`
+	Type   EvidenceType `json:"type"`
+	Path   string       `json:"path,omitempty"`
+	Regexp string       `json:"regexp,omitempty"`
+}
+
 type Step struct {
 	Name        string         `json:"name"`
 	Image       string         `json:"image"`
 	Environment map[string]any `json:"environment"`
 	Commands    []string       `json:"commands"`
+	Evidence    []Evidence     `json:"evidence"`
 }
 
 func (s *Step) Environ(params map[string]string) []string {

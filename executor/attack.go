@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +24,10 @@ import (
 type Attack struct {
 	executor *Executor
 
-	Host   string
-	Recipe *recipe.Recipe
-	Params map[string]string
+	Host     string
+	Recipe   *recipe.Recipe
+	Params   map[string]string
+	Evidence map[string]string
 }
 
 func (a *Attack) Values() map[string]string {
@@ -75,7 +77,7 @@ func (a *Attack) prepareWorkspace(ctx context.Context, r runner.Runner) (string,
 	return dir, nil
 }
 
-func (a *Attack) startServcices(ctx context.Context) ([]runner.Runner, map[string]string, error) {
+func (a *Attack) startServices(ctx context.Context) ([]runner.Runner, map[string]string, error) {
 	services := make([]runner.Runner, 0, len(a.Recipe.Services))
 	params := make(map[string]string, len(a.Recipe.Services))
 
@@ -166,6 +168,34 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 			return fmt.Errorf("command failed: %s", out.Stderr)
 		}
 
+		for _, ev := range step.Evidence {
+			switch ev.Type {
+			case recipe.EvidenceTypeFile:
+				s, err := os.Stat(ev.Path)
+				if err != nil {
+					return err
+				}
+				if s.IsDir() {
+					return fmt.Errorf("evidence path '%s' must be file", ev.Path)
+				}
+
+				// TODO: Mark evidence as file
+				a.Evidence[ev.Name] = ev.Path
+			case recipe.EvidenceTypeOutput:
+				r, err := regexp.Compile(ev.Regexp)
+				if err != nil {
+					return err
+				}
+
+				s := string(r.Find([]byte(out.Stdout)))
+				if len(s) == 0 {
+					return fmt.Errorf("evidence regexp '%s' did not match any output", ev.Regexp)
+				}
+
+				a.Evidence[ev.Name] = s
+			}
+		}
+
 		if err := a.executor.ev.AddEvidence(step.Name+"_output", "text/plain", out.Stdout); err != nil {
 			return err
 		}
@@ -189,7 +219,7 @@ func (a *Attack) Execute(ctx context.Context) error {
 	}
 	defer os.RemoveAll(workspaceDir)
 
-	services, prms, err := a.startServcices(ctx)
+	services, prms, err := a.startServices(ctx)
 	if err != nil {
 		return err
 	}
@@ -205,6 +235,12 @@ func (a *Attack) Execute(ctx context.Context) error {
 		}
 
 		params[k] = v
+	}
+
+	// Add evidence parameters.
+	for k, v := range a.Evidence {
+		// TODO: Add _FILE suffix for file evidence.
+		params["EVIDENCE_"+strings.ToUpper(k)] = v
 	}
 
 	for _, step := range a.Recipe.Steps {
