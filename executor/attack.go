@@ -160,6 +160,8 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 		_ = r.Stop(ctx)
 	}()
 
+	var buf bytes.Buffer
+
 	for _, cmd := range step.Commands {
 		t, err := envsubst.Parse(cmd)
 		if err != nil {
@@ -191,66 +193,70 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 			return fmt.Errorf("command failed: %s", out.Stderr)
 		}
 
-		for _, ev := range step.Evidence {
-			switch ev.Type {
-			case recipe.EvidenceTypeFile:
-				rc, err := r.DownlaodEvidence(ctx, ev.Path)
-				if err != nil {
-					return fmt.Errorf("failed to download evidence file '%s': %w", ev.Path, err)
-				}
-				defer rc.Close()
-
-				if ev.Regexp != "" {
-					buf := new(bytes.Buffer)
-					if _, err = io.Copy(buf, rc); err != nil {
-						return err
-					}
-
-					r, err := regexp.Compile(ev.Regexp)
-					if err != nil {
-						return err
-					}
-
-					s := string(r.Find(buf.Bytes()))
-					if len(s) == 0 {
-						return fmt.Errorf("evidence regexp '%s' did not match any content in '%s'", ev.Regexp, ev.Path)
-					}
-
-					a.Evidence[ev.Name] = s
-				} else {
-					dst := filepath.Join(evidenceDir, ev.Name+filepath.Ext(ev.Path))
-					f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o600)
-					if err != nil {
-						return err
-					}
-					defer f.Close()
-
-					if _, err = io.Copy(f, rc); err != nil {
-						return err
-					}
-
-					a.Evidence["file:"+ev.Name] = dst
-				}
-			case recipe.EvidenceTypeOutput:
-				r, err := regexp.Compile(ev.Regexp)
-				if err != nil {
-					return err
-				}
-
-				s := string(r.Find([]byte(out.Stdout)))
-				if len(s) == 0 {
-					return fmt.Errorf("evidence regexp '%s' did not match any output", ev.Regexp)
-				}
-
-				a.Evidence[ev.Name] = s
-			}
-		}
-
 		if err := a.executor.ev.AddEvidence(step.Name+"_output", "text/plain", out.Stdout); err != nil {
 			return err
 		}
 
 		a.executor.log.Console("Command output", out.Stdout)
+
+		if _, err = buf.Write(out.Stdout); err != nil {
+			return err
+		}
+	}
+
+	for _, ev := range step.Evidence {
+		switch ev.Type {
+		case recipe.EvidenceTypeFile:
+			rc, err := r.DownlaodEvidence(ctx, ev.Path)
+			if err != nil {
+				return fmt.Errorf("failed to download evidence file '%s': %w", ev.Path, err)
+			}
+			defer rc.Close()
+
+			if ev.Regexp != "" {
+				buf := new(bytes.Buffer)
+				if _, err = io.Copy(buf, rc); err != nil {
+					return err
+				}
+
+				r, err := regexp.Compile(ev.Regexp)
+				if err != nil {
+					return err
+				}
+
+				s := string(r.Find(buf.Bytes()))
+				if len(s) == 0 {
+					return fmt.Errorf("evidence regexp '%s' did not match any content in '%s'", ev.Regexp, ev.Path)
+				}
+
+				a.Evidence[ev.Name] = s
+			} else {
+				dst := filepath.Join(evidenceDir, ev.Name+filepath.Ext(ev.Path))
+				f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o600)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				if _, err = io.Copy(f, rc); err != nil {
+					return err
+				}
+
+				a.Evidence["file:"+ev.Name] = dst
+			}
+		case recipe.EvidenceTypeOutput:
+			r, err := regexp.Compile(ev.Regexp)
+			if err != nil {
+				return err
+			}
+
+			s := string(r.Find(buf.Bytes()))
+			if len(s) == 0 {
+				return fmt.Errorf("evidence regexp '%s' did not match any output", ev.Regexp)
+			}
+
+			a.Evidence[ev.Name] = s
+		}
 	}
 
 	return nil

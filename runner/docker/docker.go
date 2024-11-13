@@ -273,6 +273,10 @@ func (d *impl) DownlaodEvidence(ctx context.Context, path string) (io.ReadCloser
 		return nil, err
 	}
 
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(wordspaceDir, path)
+	}
+
 	rc, _, err := d.client.CopyFromContainer(ctx, d.containerID, path)
 
 	return rc, err
