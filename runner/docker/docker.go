@@ -14,7 +14,6 @@ import (
 
 	"vilks.io/vilks/runner"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
@@ -25,6 +24,7 @@ import (
 const (
 	volumeDriver = "local"
 	wordspaceDir = "/workspace"
+	evidenceDir  = "/evidence"
 )
 
 var (
@@ -48,9 +48,10 @@ var (
 var ErrContainerNotStarted = errors.New("container not started")
 
 type impl struct {
-	containerID string
-	volumeName  string
-	client      *client.Client
+	containerID        string
+	volumeName         string
+	evidenceVolumeName string
+	client             *client.Client
 }
 
 func New() runner.Runner {
@@ -84,6 +85,17 @@ func (d *impl) CreateWorkspace(_ context.Context, dir string) error {
 	return nil
 }
 
+func (d *impl) CreateEvidenceStore(_ context.Context, dir string) error {
+	volName, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+
+	d.evidenceVolumeName = volName
+
+	return nil
+}
+
 func (d *impl) Start(ctx context.Context, cmd runner.StartOptions) error {
 	if err := d.connect(); err != nil {
 		return err
@@ -102,7 +114,11 @@ func (d *impl) Start(ctx context.Context, cmd runner.StartOptions) error {
 
 	hostConfig := &container.HostConfig{}
 	if d.volumeName != "" {
-		hostConfig.Binds = []string{fmt.Sprintf("%s:%s", d.volumeName, wordspaceDir)}
+		hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", d.volumeName, wordspaceDir))
+	}
+
+	if d.evidenceVolumeName != "" {
+		hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", d.evidenceVolumeName, evidenceDir))
 	}
 
 	if cmd.Service && len(cmd.Ports) > 0 {
@@ -183,7 +199,7 @@ func (d *impl) Exec(ctx context.Context, env []string, cmd string, args ...strin
 
 	consoleSize := [2]uint{20, 80}
 
-	exec, err := d.client.ContainerExecCreate(ctx, d.containerID, types.ExecConfig{
+	exec, err := d.client.ContainerExecCreate(ctx, d.containerID, container.ExecOptions{
 		AttachStdout: true,
 		AttachStderr: true,
 		WorkingDir:   wordspaceDir,
@@ -194,7 +210,7 @@ func (d *impl) Exec(ctx context.Context, env []string, cmd string, args ...strin
 		return nil, err
 	}
 
-	resp, err := d.client.ContainerExecAttach(ctx, exec.ID, types.ExecStartCheck{
+	resp, err := d.client.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{
 		Detach:      false,
 		Tty:         false,
 		ConsoleSize: &consoleSize,
@@ -248,6 +264,20 @@ func (d *impl) Exec(ctx context.Context, env []string, cmd string, args ...strin
 	}, nil
 }
 
+func (d *impl) DownlaodEvidence(ctx context.Context, path string) (io.ReadCloser, error) {
+	if d.containerID == "" {
+		return nil, ErrContainerNotStarted
+	}
+
+	if err := d.connect(); err != nil {
+		return nil, err
+	}
+
+	rc, _, err := d.client.CopyFromContainer(ctx, d.containerID, path)
+
+	return rc, err
+}
+
 func (d *impl) Stop(ctx context.Context) error {
 	if d.containerID != "" {
 		if err := d.client.ContainerKill(ctx, d.containerID, "9"); err != nil && !isErrContainerNotFoundOrNotRunning(err) {
@@ -261,6 +291,12 @@ func (d *impl) Stop(ctx context.Context) error {
 
 	if d.volumeName != "" {
 		if err := d.client.VolumeRemove(ctx, d.volumeName, true); err != nil && !strings.Contains(err.Error(), "No such volume") {
+			return err
+		}
+	}
+
+	if d.evidenceVolumeName != "" {
+		if err := d.client.VolumeRemove(ctx, d.evidenceVolumeName, true); err != nil && !strings.Contains(err.Error(), "No such volume") {
 			return err
 		}
 	}

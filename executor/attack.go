@@ -4,8 +4,10 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -77,6 +79,27 @@ func (a *Attack) prepareWorkspace(ctx context.Context, r runner.Runner) (string,
 	return dir, nil
 }
 
+func (a *Attack) prepareEvidenceStore(ctx context.Context, r runner.Runner) (string, error) {
+	dir, err := os.MkdirTemp("", "vilks-evidence-")
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.Chmod(dir, 0o755); err != nil {
+		_ = os.RemoveAll(dir)
+
+		return "", err
+	}
+
+	if err := r.CreateEvidenceStore(ctx, dir); err != nil {
+		_ = os.RemoveAll(dir)
+
+		return "", err
+	}
+
+	return dir, nil
+}
+
 func (a *Attack) startServices(ctx context.Context) ([]runner.Runner, map[string]string, error) {
 	services := make([]runner.Runner, 0, len(a.Recipe.Services))
 	params := make(map[string]string, len(a.Recipe.Services))
@@ -124,7 +147,7 @@ func (a *Attack) stopServices(ctx context.Context, services []runner.Runner) {
 	}
 }
 
-func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.Step, params map[string]string) error {
+func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.Step, evidenceDir string, params map[string]string) error {
 	if err := r.Start(ctx, runner.StartOptions{
 		Image:   step.Image,
 		Timeout: 20 * time.Minute,
@@ -171,16 +194,43 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 		for _, ev := range step.Evidence {
 			switch ev.Type {
 			case recipe.EvidenceTypeFile:
-				s, err := os.Stat(ev.Path)
+				rc, err := r.DownlaodEvidence(ctx, ev.Path)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to download evidence file '%s': %w", ev.Path, err)
 				}
-				if s.IsDir() {
-					return fmt.Errorf("evidence path '%s' must be file", ev.Path)
-				}
+				defer rc.Close()
 
-				// TODO: Mark evidence as file
-				a.Evidence[ev.Name] = ev.Path
+				if ev.Regexp != "" {
+					buf := new(bytes.Buffer)
+					if _, err = io.Copy(buf, rc); err != nil {
+						return err
+					}
+
+					r, err := regexp.Compile(ev.Regexp)
+					if err != nil {
+						return err
+					}
+
+					s := string(r.Find(buf.Bytes()))
+					if len(s) == 0 {
+						return fmt.Errorf("evidence regexp '%s' did not match any content in '%s'", ev.Regexp, ev.Path)
+					}
+
+					a.Evidence[ev.Name] = s
+				} else {
+					dst := filepath.Join(evidenceDir, ev.Name+filepath.Ext(ev.Path))
+					f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o600)
+					if err != nil {
+						return err
+					}
+					defer f.Close()
+
+					if _, err = io.Copy(f, rc); err != nil {
+						return err
+					}
+
+					a.Evidence["file:"+ev.Name] = dst
+				}
 			case recipe.EvidenceTypeOutput:
 				r, err := regexp.Compile(ev.Regexp)
 				if err != nil {
@@ -219,6 +269,12 @@ func (a *Attack) Execute(ctx context.Context) error {
 	}
 	defer os.RemoveAll(workspaceDir)
 
+	evidenceDir, err := a.prepareEvidenceStore(ctx, r)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(evidenceDir)
+
 	services, prms, err := a.startServices(ctx)
 	if err != nil {
 		return err
@@ -244,14 +300,20 @@ func (a *Attack) Execute(ctx context.Context) error {
 
 		// Add evidence parameters.
 		for k, v := range a.Evidence {
-			// TODO: Add _file suffix for file evidence.
+			if strings.HasPrefix(k, "file:") {
+				prms["evidence_"+k[5:]+"_file"] = filepath.Join("/evidence", v)
+				continue
+			}
+
 			prms["evidence_"+k] = v
 		}
 
-		if err := a.executeStep(ctx, r, step, prms); err != nil {
+		if err := a.executeStep(ctx, r, step, evidenceDir, prms); err != nil {
 			return err
 		}
 	}
+
+	// TODO: Archive evidence files and parameters to evidence directory
 
 	return nil
 }

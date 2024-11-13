@@ -11,9 +11,11 @@ import (
 
 type Runner interface {
 	CreateWorkspace(ctx context.Context, dir string) error
+	CreateEvidenceStore(ctx context.Context, dir string) error
 	Start(ctx context.Context, cmd StartOptions) error
 	Tail(ctx context.Context) (io.ReadCloser, error)
 	Exec(ctx context.Context, env []string, cmd string, args ...string) (*ExecResult, error)
+	DownlaodEvidence(ctx context.Context, path string) (io.ReadCloser, error)
 	Stop(ctx context.Context) error
 }
 
