@@ -22,12 +22,23 @@ type Evidence struct {
 	Regexp string       `json:"regexp,omitempty"`
 }
 
+type When struct {
+	Status string `json:"status"`
+}
+
+type Conditions struct {
+	SuccessRegexp string `json:"success_regexp,omitempty"`
+	FailureRegexp string `json:"failure_regexp,omitempty"`
+}
+
 type Step struct {
 	Name        string         `json:"name"`
 	Image       string         `json:"image"`
 	Environment map[string]any `json:"environment"`
+	Conditions  *Conditions    `json:"conditions,omitempty"`
 	Commands    []string       `json:"commands"`
 	Evidence    []Evidence     `json:"evidence"`
+	When        *When          `json:"when,omitempty"`
 }
 
 func (s *Step) Environ(params map[string]string) []string {

@@ -6,6 +6,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -32,14 +33,34 @@ type Attack struct {
 	Evidence map[string]string
 }
 
+type ErrCommandFailed struct {
+	Output []byte
+}
+
+func (e ErrCommandFailed) Error() string {
+	return fmt.Sprintf("command failed: %s", e.Output)
+}
+
 func (a *Attack) Values() map[string]string {
 	prms := make(map[string]string, len(a.Recipe.Params)+1)
 
 	// Add default parameters.
-	prms["team_name"] = a.executor.TeamName
-	prms["team_index"] = a.executor.TeamIndex
 	prms["listener_host"] = a.executor.AttackerHost
 
+	// Add team parameters.
+	prms["team_name"] = a.executor.TeamName
+	prms["team_index"] = a.executor.TeamIndex
+	for k, v := range a.executor.TeamParams {
+		prms["team_"+k] = v
+	}
+
+	// Add attack parameters.
+	prms["attack_name"] = a.executor.AttackName
+	for k, v := range a.executor.GlobalParams {
+		prms[k] = v
+	}
+
+	// Add recipe parameters.
 	for _, p := range a.Recipe.Params {
 		prms[p.Name] = a.Params[p.Name]
 		if len(prms[p.Name]) == 0 {
@@ -189,8 +210,36 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 		}
 
 		if out.ExitCode != 0 {
-			// TODO: Better command failure handling.
-			return fmt.Errorf("command failed: %s", out.Stderr)
+			output := out.Stderr
+			if len(output) == 0 {
+				output = out.Stdout
+			}
+
+			return &ErrCommandFailed{Output: output}
+		}
+
+		if step.Conditions != nil {
+			if step.Conditions.SuccessRegexp != "" {
+				r, err := regexp.Compile(step.Conditions.SuccessRegexp)
+				if err != nil {
+					return err
+				}
+
+				if !r.Match(out.Stdout) {
+					return &ErrCommandFailed{Output: []byte(fmt.Sprintf("output did not match success regexp '%s'", step.Conditions.SuccessRegexp))}
+				}
+			}
+
+			if step.Conditions.FailureRegexp != "" {
+				r, err := regexp.Compile(step.Conditions.FailureRegexp)
+				if err != nil {
+					return err
+				}
+
+				if r.Match(out.Stdout) {
+					return &ErrCommandFailed{Output: []byte(fmt.Sprintf("output matched failure regexp '%s'", step.Conditions.FailureRegexp))}
+				}
+			}
 		}
 
 		if err := a.executor.ev.AddEvidence(step.Name+"_output", "text/plain", out.Stdout); err != nil {
@@ -224,12 +273,19 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 					return err
 				}
 
-				s := string(r.Find(buf.Bytes()))
-				if len(s) == 0 {
+				var s bytes.Buffer
+				for i, m := range r.FindAll(buf.Bytes(), -1) {
+					if i > 0 {
+						s.WriteByte('\n')
+					}
+					s.Write(m)
+				}
+
+				if s.Len() == 0 {
 					return fmt.Errorf("evidence regexp '%s' did not match any content in '%s'", ev.Regexp, ev.Path)
 				}
 
-				a.Evidence[ev.Name] = s
+				a.Evidence[ev.Name] = s.String()
 			} else {
 				dst := filepath.Join(evidenceDir, ev.Name+filepath.Ext(ev.Path))
 				f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o600)
@@ -250,12 +306,19 @@ func (a *Attack) executeStep(ctx context.Context, r runner.Runner, step *recipe.
 				return err
 			}
 
-			s := string(r.Find(buf.Bytes()))
-			if len(s) == 0 {
+			var s bytes.Buffer
+			for i, m := range r.FindAll(buf.Bytes(), -1) {
+				if i > 0 {
+					s.WriteByte('\n')
+				}
+				s.Write(m)
+			}
+
+			if s.Len() == 0 {
 				return fmt.Errorf("evidence regexp '%s' did not match any output", ev.Regexp)
 			}
 
-			a.Evidence[ev.Name] = s
+			a.Evidence[ev.Name] = s.String()
 		}
 	}
 
@@ -299,7 +362,15 @@ func (a *Attack) Execute(ctx context.Context) error {
 		params[k] = v
 	}
 
+	var failed bool
+	var failErr error
+
 	for _, step := range a.Recipe.Steps {
+		if (failed && (step.When == nil || step.When.Status != "failure")) ||
+			(!failed && step.When != nil && step.When.Status != "success") {
+			continue
+		}
+
 		a.executor.log.Debug("Executing step " + a.executor.log.Special(step.Name))
 
 		prms := maps.Clone(params)
@@ -315,11 +386,19 @@ func (a *Attack) Execute(ctx context.Context) error {
 		}
 
 		if err := a.executeStep(ctx, r, step, evidenceDir, prms); err != nil {
+			var e *ErrCommandFailed
+			if errors.As(err, &e) {
+				failErr = err
+				failed = true
+
+				continue
+			}
+
 			return err
 		}
 	}
 
 	// TODO: Archive evidence files and parameters to evidence directory
 
-	return nil
+	return failErr
 }

@@ -3,12 +3,12 @@ module vilks.io/vilks
 go 1.22
 
 require (
-	github.com/docker/docker v27.3.1+incompatible
+	github.com/docker/docker v27.5.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/drone/envsubst v1.0.3
 	github.com/fatih/color v1.18.0
-	github.com/goccy/go-yaml v1.13.6
-	github.com/moby/moby v27.3.1+incompatible
+	github.com/goccy/go-yaml v1.15.16
+	github.com/moby/moby v27.5.1+incompatible
 	github.com/spf13/cobra v1.8.1
 )
 

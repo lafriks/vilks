@@ -32,9 +32,10 @@ func initRootCmd() {
 
 	log = &logger.Console{}
 
+	var debug bool
+
 	RootCmd = &cobra.Command{
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			debug, _ := cmd.PersistentFlags().GetBool("debug")
 			log.SetDebug(debug)
 		},
 
@@ -43,7 +44,7 @@ func initRootCmd() {
 		},
 	}
 
-	RootCmd.PersistentFlags().BoolP("debug", "d", false, "Enable debug mode")
+	RootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug mode")
 }
 
 func main() {

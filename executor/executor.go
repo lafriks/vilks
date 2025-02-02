@@ -18,9 +18,13 @@ type Executor struct {
 	log     logger.Logger
 	ev      evidence.Evidence
 
+	AttackName   string
 	AttackerHost string
 	TeamName     string
 	TeamIndex    string
+	TeamParams   map[string]string
+
+	GlobalParams map[string]string
 }
 
 func New(log logger.Logger, ev evidence.Evidence, recipes *recipe.Recipes) *Executor {

@@ -1,13 +1,19 @@
 teams:
   - name: Team 1
-    index: 26
+    index: 1
+    params:
+      - name: web_server_host
+        value: 172.46.64.98
 
   - name: Team 2
-    index: 26
+    index: 2
+    params:
+      - name: web_server_host
+        value: 172.46.64.99
 
 hosts:
   - name: Web site
-    host: 172.{x}.64.98
+    host: ${web_server_host}
     attacks:
       - name: RCE
         recipe: drupal

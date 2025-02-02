@@ -151,14 +151,46 @@ func (s *Scene) Execute(ctx context.Context, teamName, hostName, attackName stri
 
 	ex := executor.New(s.log, s.evmgr.Attack(team.Name, host.Name), s.recipes)
 	ex.AttackerHost = s.attackerHost
+
 	ex.TeamName = team.Name
 	ex.TeamIndex = strconv.FormatInt(int64(team.Index), 10)
+	ex.TeamParams = make(map[string]string, len(team.Params))
+	for _, prm := range team.Params {
+		ex.TeamParams[prm.Name] = prm.Value
+	}
 
-	target := strings.ReplaceAll(host.Target, "{x}", strconv.FormatInt(int64(team.Index), 10))
+	ex.AttackName = attack.Name
+
+	ex.GlobalParams = make(map[string]string, len(s.scenario.Params))
+	for _, prm := range s.scenario.Params {
+		ex.GlobalParams[prm.Name] = prm.Value
+	}
+
+	ti1 := ex.TeamIndex
+	ti2 := ti1
+	if len(ti2) == 1 {
+		ti2 = "0" + ti1
+	}
+	ti3 := ti2
+	if len(ti3) == 2 {
+		ti3 = "0" + ti2
+	}
+
+	target := strings.ReplaceAll(host.Target, "{x}", ti1)
+	target = strings.ReplaceAll(target, "{xx}", ti2)
+	target = strings.ReplaceAll(target, "{xxx}", ti3)
+
+	// Allow to use team parameters in target.
+	for k, v := range ex.TeamParams {
+		target = strings.ReplaceAll(target, "${"+k+"}", v)
+	}
+
 	params := make(map[string]string, len(attack.Params))
 
 	for _, prm := range attack.Params {
-		params[prm.Name] = strings.ReplaceAll(prm.Value, "{x}", strconv.FormatInt(int64(team.Index), 10))
+		params[prm.Name] = strings.ReplaceAll(prm.Value, "{x}", ti1)
+		params[prm.Name] = strings.ReplaceAll(params[prm.Name], "{xx}", ti2)
+		params[prm.Name] = strings.ReplaceAll(params[prm.Name], "{xxx}", ti3)
 	}
 
 	if err := ex.AddAttack(target, attack.Recipe, params); err != nil {

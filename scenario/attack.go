@@ -4,14 +4,16 @@
 package scenario
 
 type Scenario struct {
-	Name  string `json:"name"`
-	Teams []Team `json:"teams"`
-	Hosts []Host `json:"hosts"`
+	Name   string  `json:"name"`
+	Teams  []Team  `json:"teams"`
+	Hosts  []Host  `json:"hosts"`
+	Params []Param `json:"params"`
 }
 
 type Team struct {
-	Name  string `json:"name"`
-	Index int    `json:"index"`
+	Name   string  `json:"name"`
+	Index  int     `json:"index"`
+	Params []Param `json:"params"`
 }
 
 type Host struct {
