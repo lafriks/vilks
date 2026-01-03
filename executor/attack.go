@@ -21,7 +21,7 @@ import (
 	"vilks.io/vilks/runner"
 	"vilks.io/vilks/runner/docker"
 
-	"github.com/drone/envsubst"
+	"github.com/woodpecker-ci/envsubst"
 )
 
 type Attack struct {

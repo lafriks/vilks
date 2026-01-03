@@ -14,6 +14,7 @@ import (
 
 	"vilks.io/vilks/runner"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
@@ -22,8 +23,7 @@ import (
 )
 
 const (
-	volumeDriver = "local"
-	wordspaceDir = "/workspace"
+	workspaceDir = "/workspace"
 	evidenceDir  = "/evidence"
 )
 
@@ -114,7 +114,7 @@ func (d *impl) Start(ctx context.Context, cmd runner.StartOptions) error {
 
 	hostConfig := &container.HostConfig{}
 	if d.volumeName != "" {
-		hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", d.volumeName, wordspaceDir))
+		hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", d.volumeName, workspaceDir))
 	}
 
 	if d.evidenceVolumeName != "" {
@@ -138,7 +138,7 @@ func (d *impl) Start(ctx context.Context, cmd runner.StartOptions) error {
 	}
 
 	resp, err := d.client.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, "")
-	if client.IsErrNotFound(err) {
+	if errdefs.IsNotFound(err) {
 		var r io.ReadCloser
 
 		r, err = d.client.ImagePull(ctx, cmd.Image, image.PullOptions{})
@@ -202,7 +202,7 @@ func (d *impl) Exec(ctx context.Context, env []string, cmd string, args ...strin
 	exec, err := d.client.ContainerExecCreate(ctx, d.containerID, container.ExecOptions{
 		AttachStdout: true,
 		AttachStderr: true,
-		WorkingDir:   wordspaceDir,
+		WorkingDir:   workspaceDir,
 		Env:          env,
 		Cmd:          append([]string{cmd}, args...),
 	})
@@ -274,7 +274,7 @@ func (d *impl) DownlaodEvidence(ctx context.Context, path string) (io.ReadCloser
 	}
 
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(wordspaceDir, path)
+		path = filepath.Join(workspaceDir, path)
 	}
 
 	rc, _, err := d.client.CopyFromContainer(ctx, d.containerID, path)
